@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mini YouTube Dashboard</title>
+    <link rel="preconnect" href="https://www.youtube.com">
+    <link rel="preconnect" href="https://i.ytimg.com">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <main class="main-panel">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Hello Divya Singh</p>
+            <h1>YouTube Premium</h1>
+          </div>
+          <div class="topbar-actions">
+            <button class="ghost-button" type="button" id="refreshButton" title="Reload data">
+              <i data-lucide="refresh-cw"></i>
+              <span>Refresh</span>
+            </button>
+            <button class="primary-button" type="button" id="syncButton" title="Sync YouTube">
+              <i data-lucide="sparkles"></i>
+              <span>Sync</span>
+            </button>
+            <button class="icon-button" type="button" id="settingsButton" title="Settings" aria-label="Settings">
+              <i data-lucide="settings"></i>
+            </button>
+          </div>
+        </header>
+
+        <section class="command-panel">
+          <div class="command-copy">
+            <p class="eyebrow">-c</p>
+            <h2>Track channels, teachers, shorts, lives, and long videos in one place.</h2>
+          </div>
+          <div class="search-wrap">
+            <i data-lucide="search"></i>
+            <input id="searchInput" type="search" placeholder="Search title, teacher, tags, or channel">
+          </div>
+        </section>
+
+        <section class="filters" aria-label="Filters">
+          <div class="filter-row">
+            <label>
+              <span>Channel</span>
+              <select id="channelFilter"></select>
+            </label>
+            <label>
+              <span>Teacher</span>
+              <select id="teacherFilter"></select>
+            </label>
+            <label>
+              <span>Date</span>
+              <select id="dateFilter">
+                <option value="7" selected>Last 7 days</option>
+                <option value="30">Last 30 days</option>
+                <option value="custom">Custom range</option>
+                <option value="all">All time</option>
+              </select>
+            </label>
+            <label>
+              <span>From</span>
+              <input id="fromDateFilter" type="date">
+            </label>
+            <label>
+              <span>To</span>
+              <input id="toDateFilter" type="date">
+            </label>
+            <label>
+              <span>Sort</span>
+              <select id="sortFilter">
+                <option value="newest">Newest</option>
+                <option value="mostViewed">Most viewed</option>
+                <option value="mostLiked">Most liked</option>
+                <option value="oldest">Oldest</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="type-tabs" role="tablist" aria-label="Video type">
+            <button class="type-tab is-active" type="button" data-type="all">All</button>
+            <button class="type-tab" type="button" data-type="long">Long</button>
+            <button class="type-tab" type="button" data-type="shorts">Shorts</button>
+            <button class="type-tab" type="button" data-type="live">Live</button>
+          </div>
+        </section>
+
+        <section class="stats-grid" aria-label="Summary">
+          <article>
+            <span>Total videos</span>
+            <strong id="statTotal">0</strong>
+          </article>
+          <article>
+            <span>Total views</span>
+            <strong id="statViews">0</strong>
+          </article>
+          <article>
+            <span>Shorts</span>
+            <strong id="statShorts">0</strong>
+          </article>
+          <article>
+            <span>Live / Premiere</span>
+            <strong id="statLive">0</strong>
+          </article>
+        </section>
+
+        <section class="content-grid">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Videos</p>
+              <h2 id="resultHeading">Latest videos</h2>
+            </div>
+            <div class="section-actions">
+              <p id="lastUpdated" class="muted"></p>
+              <div class="analysis-toolbar">
+                <span id="selectedCount">0 selected</span>
+                <button class="ghost-button" type="button" id="clearSelectionButton">
+                  <i data-lucide="x"></i>
+                  <span>Clear</span>
+                </button>
+                <button class="primary-button" type="button" id="analyzeButton" disabled>
+                  <i data-lucide="chart-no-axes-combined"></i>
+                  <span>Analyze Videos</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div id="videoGrid" class="video-grid" aria-live="polite"></div>
+          <div id="emptyState" class="empty-state" hidden>
+            <i data-lucide="search-x"></i>
+            <p>No videos match the current filters.</p>
+          </div>
+        </section>
+
+        <section class="reference-grid">
+          <article id="channels" class="reference-panel">
+            <div class="section-heading compact">
+              <h2>Channels</h2>
+              <span id="channelCount">0</span>
+            </div>
+            <div id="channelList" class="pill-list"></div>
+          </article>
+          <article id="teachers" class="reference-panel">
+            <div class="section-heading compact">
+              <h2>Teachers</h2>
+              <span id="teacherCount">0</span>
+            </div>
+            <div id="teacherList" class="pill-list"></div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <div id="loadingOverlay" class="loading-overlay" hidden>
+      <div class="loader-card">
+        <span class="loader"></span>
+        <p id="loadingText">Loading dashboard...</p>
+      </div>
+    </div>
+
+    <div id="settingsPanel" class="settings-panel" hidden>
+      <div class="settings-card">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Settings</p>
+            <h2>Connection</h2>
+          </div>
+          <button class="icon-button" type="button" id="closeSettingsButton" aria-label="Close settings">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <label class="stacked-label">
+          <span>Apps Script Web App URL</span>
+          <input id="apiUrlInput" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+        </label>
+        <label class="stacked-label">
+          <span>Admin token</span>
+          <input id="adminTokenInput" type="password" placeholder="Only needed for sync and manual edits">
+        </label>
+        <div class="settings-actions">
+          <button class="ghost-button" type="button" id="testConnectionButton">
+            <i data-lucide="plug-zap"></i>
+            <span>Test</span>
+          </button>
+          <button class="primary-button" type="button" id="saveSettingsButton">
+            <i data-lucide="save"></i>
+            <span>Save</span>
+          </button>
+        </div>
+        <p id="settingsMessage" class="form-message"></p>
+      </div>
+    </div>
+
+    <div id="playerModal" class="player-modal" hidden>
+      <div class="player-backdrop" data-close-modal></div>
+      <article class="player-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow" id="modalChannel">Channel</p>
+            <h2 id="modalTitle">Video title</h2>
+          </div>
+          <div class="modal-actions">
+            <button class="icon-button" type="button" id="miniPlayerButton" title="Mini player" aria-label="Mini player">
+              <i data-lucide="picture-in-picture-2"></i>
+            </button>
+            <button class="icon-button" type="button" id="fullscreenButton" title="Full screen" aria-label="Full screen">
+              <i data-lucide="maximize"></i>
+            </button>
+            <button class="icon-button" type="button" data-close-modal title="Close" aria-label="Close">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+        </div>
+        <div class="player-frame-wrap" id="playerFrameWrap">
+          <iframe
+            id="youtubeFrame"
+            title="YouTube video player"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowfullscreen></iframe>
+        </div>
+        <div class="player-details">
+          <div class="video-meta">
+            <span id="modalViews"></span>
+            <span id="modalPublished"></span>
+            <span id="modalDuration"></span>
+          </div>
+          <div class="editor-grid">
+            <label class="stacked-label">
+              <span>Teacher override</span>
+              <input id="teacherManualInput" type="text" list="teacherNames" placeholder="Manual teacher name">
+              <datalist id="teacherNames"></datalist>
+            </label>
+            <label class="stacked-label">
+              <span>Manual tags</span>
+              <input id="manualTagsInput" type="text" placeholder="Best, Review, Tutorial">
+            </label>
+            <button class="primary-button save-override" type="button" id="saveOverrideButton">
+              <i data-lucide="check"></i>
+              <span>Save</span>
+            </button>
+          </div>
+          <p id="overrideMessage" class="form-message"></p>
+        </div>
+      </article>
+    </div>
+
+    <div id="analysisModal" class="analysis-modal" hidden>
+      <div class="player-backdrop" data-close-analysis></div>
+      <article class="analysis-card" role="dialog" aria-modal="true" aria-labelledby="analysisTitle">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">YouTube Intelligence</p>
+            <h2 id="analysisTitle">Selected Videos Report</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-analysis aria-label="Close analysis">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <div id="analysisSummary" class="analysis-summary"></div>
+
+        <div class="analysis-write-panel">
+          <label class="stacked-label">
+            <span>Write report to Sheet tab</span>
+            <select id="analysisSheetInput"></select>
+            <datalist id="sheetTabs"></datalist>
+          </label>
+          <label class="stacked-label">
+            <span>Remarks</span>
+            <input id="analysisRemarksInput" type="text" placeholder="Optional remarks">
+          </label>
+          <button class="primary-button" type="button" id="saveAnalysisButton">
+            <i data-lucide="sheet"></i>
+            <span>Write to Sheet</span>
+          </button>
+        </div>
+        <p id="analysisMessage" class="form-message"></p>
+
+        <div class="analysis-table-wrap">
+          <table class="analysis-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Channel</th>
+                <th>Faculty</th>
+                <th>Last 7 Days Videos Title</th>
+                <th>Video Link</th>
+                <th>Published</th>
+                <th>Duration</th>
+                <th>Type</th>
+                <th>Views</th>
+                <th>Likes</th>
+                <th>Comments</th>
+                <th colspan="3">Faculty Averages</th>
+              </tr>
+              <tr>
+                <th colspan="11"></th>
+                <th>Average Views</th>
+                <th>Average Likes</th>
+                <th>Average Comments</th>
+              </tr>
+            </thead>
+            <tbody id="analysisTableBody"></tbody>
+          </table>
+        </div>
+      </article>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
