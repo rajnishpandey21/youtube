@@ -1,4 +1,4 @@
-const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbxAJpFrETNLluPa4zx9h-DlOF0xmMHTUoMCVd55Nj3GxY-60eQTXaZw3l-imdKCRFwLrA/exec';
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbyGD_4Kj1V9nnCBPZvxLSXJoUtw7mFKhilYkBJPPgPQE0PSjishstezKVMnGbXcAcZ6Tw/exec';
 const DEFAULT_ADMIN_TOKEN = 'myDashboardAdmin123';
 
 const state = {
@@ -13,7 +13,12 @@ const state = {
   activeVideo: null,
   selectedVideoIds: new Set(),
   selectedVideoOrder: [],
-  analysisVideos: []
+  analysisVideos: [],
+  bulkGroups: [],
+  bulkMissing: [],
+  bulkSelectionKeys: new Set(),
+  bulkSkippedVideoIds: new Set(),
+  teacherCandidates: []
 };
 
 const els = {};
@@ -29,6 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
 function cacheElements() {
   [
     'refreshButton',
+    'updateTeachersButton',
+    'bulkUpdateButton',
     'syncButton',
     'settingsButton',
     'closeSettingsButton',
@@ -85,6 +92,30 @@ function cacheElements() {
     'saveAnalysisButton',
     'analysisMessage',
     'analysisTableBody',
+    'bulkUpdateModal',
+    'bulkFromDate',
+    'bulkToDate',
+    'bulkPreviewButton',
+    'bulkApplyReviewButton',
+    'bulkSkipAllMissingButton',
+    'bulkWriteButton',
+    'bulkMessage',
+    'bulkSummary',
+    'bulkMissingSection',
+    'bulkMissingList',
+    'bulkGroupsSection',
+    'bulkGroupsList',
+    'bulkSelectedCount',
+    'teacherUpdateModal',
+    'teacherFromDate',
+    'teacherToDate',
+    'teacherPreviewButton',
+    'teacherUpdateSubmitButton',
+    'teacherUpdateMessage',
+    'teacherUpdateSummary',
+    'teacherCandidatesSection',
+    'teacherCandidatesList',
+    'teacherSelectAll',
     'toast'
   ].forEach((id) => {
     els[id] = document.getElementById(id);
@@ -92,6 +123,8 @@ function cacheElements() {
 }
 
 function bindEvents() {
+  els.updateTeachersButton.addEventListener('click', openTeacherUpdate);
+  els.bulkUpdateButton.addEventListener('click', openBulkUpdate);
   els.refreshButton.addEventListener('click', () => loadDashboard({ force: true }));
   els.syncButton.addEventListener('click', syncNow);
   els.settingsButton.addEventListener('click', openSettings);
@@ -115,6 +148,17 @@ function bindEvents() {
   els.fullscreenButton.addEventListener('click', requestPlayerFullscreen);
   els.saveOverrideButton.addEventListener('click', saveOverride);
   els.saveAnalysisButton.addEventListener('click', saveAnalysisReport);
+  els.bulkUpdateModal.addEventListener('click', handleBulkModalClick);
+  els.bulkPreviewButton.addEventListener('click', () => loadBulkPreview());
+  els.bulkApplyReviewButton.addEventListener('click', applyBulkMetadataReview);
+  els.bulkSkipAllMissingButton.addEventListener('click', skipAllMissingBulkVideos);
+  els.bulkWriteButton.addEventListener('click', writeBulkReports);
+  els.bulkGroupsList.addEventListener('change', handleBulkSelectionChange);
+  els.teacherUpdateModal.addEventListener('click', handleTeacherUpdateModalClick);
+  els.teacherPreviewButton.addEventListener('click', loadTeacherDiscoveryPreview);
+  els.teacherUpdateSubmitButton.addEventListener('click', submitTeacherUpdates);
+  els.teacherCandidatesList.addEventListener('change', updateTeacherCandidateSelectionState);
+  els.teacherSelectAll.addEventListener('change', toggleAllTeacherCandidates);
 
   document.querySelectorAll('.type-tab').forEach((button) => {
     button.addEventListener('click', () => {
@@ -131,6 +175,12 @@ function bindEvents() {
     }
     if (event.key === 'Escape' && !els.analysisModal.hidden) {
       closeAnalysisModal();
+    }
+    if (event.key === 'Escape' && !els.bulkUpdateModal.hidden) {
+      closeBulkUpdate();
+    }
+    if (event.key === 'Escape' && !els.teacherUpdateModal.hidden) {
+      closeTeacherUpdate();
     }
   });
 }
@@ -706,6 +756,573 @@ async function saveAnalysisReport() {
   }
 }
 
+function openTeacherUpdate() {
+  const today = new Date();
+  const thirtyDaysAgo = new Date(today);
+  thirtyDaysAgo.setDate(today.getDate() - 29);
+
+  state.teacherCandidates = [];
+  els.teacherFromDate.value = formatDateInput(thirtyDaysAgo);
+  els.teacherToDate.value = formatDateInput(today);
+  els.teacherUpdateSummary.hidden = true;
+  els.teacherCandidatesSection.hidden = true;
+  els.teacherCandidatesList.innerHTML = '';
+  els.teacherUpdateSubmitButton.disabled = true;
+  els.teacherSelectAll.checked = true;
+  els.teacherSelectAll.indeterminate = false;
+  setTeacherUpdateMessage('Select a date range to discover teacher names from video titles and manual overrides.', '');
+  els.teacherUpdateModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+function closeTeacherUpdate() {
+  els.teacherUpdateModal.hidden = true;
+  document.body.style.overflow = '';
+}
+
+function handleTeacherUpdateModalClick(event) {
+  if (event.target.closest('[data-close-teachers]')) {
+    closeTeacherUpdate();
+  }
+}
+
+async function loadTeacherDiscoveryPreview() {
+  const fromDate = els.teacherFromDate.value;
+  const toDate = els.teacherToDate.value;
+
+  if (!fromDate || !toDate) {
+    setTeacherUpdateMessage('Select both From and To dates.', 'error');
+    return;
+  }
+  if (fromDate > toDate) {
+    setTeacherUpdateMessage('From date cannot be after To date.', 'error');
+    return;
+  }
+
+  els.teacherPreviewButton.disabled = true;
+  els.teacherUpdateSubmitButton.disabled = true;
+  setTeacherUpdateMessage('Scanning video titles for teacher candidates...', '');
+
+  try {
+    const response = await apiWrite({
+      action: 'getTeacherDiscoveryPreview',
+      token: state.adminToken,
+      fromDate,
+      toDate
+    });
+
+    if (!response.ok) {
+      throw new Error(response.error || 'Could not discover teachers.');
+    }
+
+    const preview = response.data || {};
+    state.teacherCandidates = preview.candidates || [];
+    renderTeacherDiscoveryPreview(preview);
+  } catch (error) {
+    setTeacherUpdateMessage(error.message || String(error), 'error');
+  } finally {
+    els.teacherPreviewButton.disabled = false;
+  }
+}
+
+function renderTeacherDiscoveryPreview(preview) {
+  const existingCount = state.teacherCandidates.filter((candidate) => candidate.existing).length;
+  const newCount = state.teacherCandidates.length - existingCount;
+
+  els.teacherUpdateSummary.hidden = false;
+  els.teacherUpdateSummary.innerHTML = [
+    summaryCard('Videos scanned', Number(preview.scannedVideos || 0).toLocaleString()),
+    summaryCard('Candidates', state.teacherCandidates.length.toLocaleString()),
+    summaryCard('Existing teachers', existingCount.toLocaleString()),
+    summaryCard('New teachers', newCount.toLocaleString())
+  ].join('');
+
+  els.teacherCandidatesSection.hidden = state.teacherCandidates.length === 0;
+  els.teacherCandidatesList.innerHTML = state.teacherCandidates.map((candidate, index) => `
+    <article class="teacher-candidate-card" data-teacher-candidate="${index}">
+      <div class="teacher-candidate-select">
+        <label>
+          <input type="checkbox" data-teacher-select checked>
+          <span>${candidate.existing ? 'Update' : 'Add'}</span>
+        </label>
+        <span class="teacher-status-badge ${candidate.existing ? 'existing' : 'new'}">${candidate.existing ? 'Existing' : 'New'}</span>
+      </div>
+      <div class="teacher-candidate-fields">
+        <label class="stacked-label">
+          <span>Teacher name</span>
+          <input type="text" data-teacher-name value="${escapeAttribute(candidate.teacherName)}">
+        </label>
+        <label class="stacked-label teacher-keywords-field">
+          <span>Keywords, separated with |</span>
+          <input type="text" data-teacher-keywords value="${escapeAttribute(candidate.keywords)}">
+        </label>
+        <label class="stacked-label">
+          <span>Parent channel</span>
+          <input type="text" data-teacher-parent value="${escapeAttribute(candidate.parentChannelName)}" readonly>
+        </label>
+        <label class="stacked-label teacher-priority-field">
+          <span>Priority</span>
+          <input type="number" data-teacher-priority min="0" step="1" value="${Number(candidate.priority || 50)}">
+        </label>
+        <label class="teacher-active-option">
+          <input type="checkbox" data-teacher-active ${candidate.active ? 'checked' : ''}>
+          <span>Active</span>
+        </label>
+      </div>
+      <div class="teacher-candidate-evidence">
+        <span><strong>${Number(candidate.videoCount || 0).toLocaleString()}</strong> matching video(s)</span>
+        <span>Channels: ${escapeHtml((candidate.channelNames || []).join(', ') || candidate.parentChannelName || '-')}</span>
+        <details>
+          <summary>Show sample titles</summary>
+          <ul>${(candidate.sampleTitles || []).map((title) => `<li>${escapeHtml(title)}</li>`).join('')}</ul>
+        </details>
+      </div>
+    </article>
+  `).join('');
+
+  if (state.teacherCandidates.length) {
+    setTeacherUpdateMessage('Review the suggestions. Existing keywords will be merged; no teacher rows will be deleted.', 'success');
+  } else {
+    setTeacherUpdateMessage('No teacher candidates were detected in this date range.', '');
+  }
+
+  updateTeacherCandidateSelectionState();
+}
+
+function toggleAllTeacherCandidates() {
+  const checked = els.teacherSelectAll.checked;
+  els.teacherCandidatesList.querySelectorAll('[data-teacher-select]').forEach((checkbox) => {
+    checkbox.checked = checked;
+  });
+  updateTeacherCandidateSelectionState();
+}
+
+function updateTeacherCandidateSelectionState() {
+  const checkboxes = [...els.teacherCandidatesList.querySelectorAll('[data-teacher-select]')];
+  const selected = checkboxes.filter((checkbox) => checkbox.checked).length;
+  els.teacherSelectAll.checked = checkboxes.length > 0 && selected === checkboxes.length;
+  els.teacherSelectAll.indeterminate = selected > 0 && selected < checkboxes.length;
+  els.teacherUpdateSubmitButton.disabled = selected === 0;
+  els.teacherUpdateSubmitButton.querySelector('span').textContent = selected
+    ? `Update ${selected.toLocaleString()} Selected`
+    : 'Update Selected Teachers';
+}
+
+function collectSelectedTeacherCandidates() {
+  const selected = [];
+  els.teacherCandidatesList.querySelectorAll('.teacher-candidate-card').forEach((card) => {
+    if (!card.querySelector('[data-teacher-select]').checked) {
+      return;
+    }
+
+    const original = state.teacherCandidates[Number(card.dataset.teacherCandidate)];
+    selected.push({
+      teacherName: card.querySelector('[data-teacher-name]').value.trim(),
+      keywords: card.querySelector('[data-teacher-keywords]').value.trim(),
+      channelName: original.channelName || '',
+      channelNames: (original.channelNames || []).join('|'),
+      parentChannelName: card.querySelector('[data-teacher-parent]').value.trim(),
+      active: card.querySelector('[data-teacher-active]').checked,
+      priority: Number(card.querySelector('[data-teacher-priority]').value || 50),
+      notes: original.notes || '',
+      existingRowNumber: original.existingRowNumber || ''
+    });
+  });
+  return selected;
+}
+
+async function submitTeacherUpdates() {
+  const candidates = collectSelectedTeacherCandidates();
+  if (!candidates.length) {
+    setTeacherUpdateMessage('Select at least one teacher candidate.', 'error');
+    return;
+  }
+  if (candidates.some((candidate) => !candidate.teacherName || !candidate.keywords)) {
+    setTeacherUpdateMessage('Every selected candidate needs a teacher name and at least one keyword.', 'error');
+    return;
+  }
+
+  els.teacherUpdateSubmitButton.disabled = true;
+  setTeacherUpdateMessage('Updating the Teachers tab and refreshing video assignments...', '');
+
+  try {
+    const response = await apiWrite({
+      action: 'updateTeachers',
+      token: state.adminToken,
+      candidates: JSON.stringify(candidates)
+    });
+
+    if (!response.ok) {
+      throw new Error(response.error || 'Could not update the Teachers tab.');
+    }
+
+    const result = response.data || {};
+    closeTeacherUpdate();
+    showToast(`Teachers updated: ${result.inserted || 0} added, ${result.updated || 0} updated.`);
+    await loadDashboard({ force: true });
+  } catch (error) {
+    setTeacherUpdateMessage(error.message || String(error), 'error');
+    updateTeacherCandidateSelectionState();
+  }
+}
+
+function openBulkUpdate() {
+  const today = new Date();
+  const sevenDaysAgo = new Date(today);
+  sevenDaysAgo.setDate(today.getDate() - 6);
+
+  state.bulkGroups = [];
+  state.bulkMissing = [];
+  state.bulkSelectionKeys.clear();
+  state.bulkSkippedVideoIds.clear();
+  els.bulkFromDate.value = formatDateInput(sevenDaysAgo);
+  els.bulkToDate.value = formatDateInput(today);
+  els.bulkSummary.hidden = true;
+  els.bulkMissingSection.hidden = true;
+  els.bulkGroupsSection.hidden = true;
+  els.bulkWriteButton.disabled = true;
+  setBulkMessage('Select the reporting range, then generate a preview.', '');
+  els.bulkUpdateModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+function closeBulkUpdate() {
+  els.bulkUpdateModal.hidden = true;
+  document.body.style.overflow = '';
+}
+
+function handleBulkModalClick(event) {
+  if (event.target.closest('[data-close-bulk]')) {
+    closeBulkUpdate();
+  }
+}
+
+async function loadBulkPreview(options = {}) {
+  const fromDate = els.bulkFromDate.value;
+  const toDate = els.bulkToDate.value;
+
+  if (!fromDate || !toDate) {
+    setBulkMessage('Select both From and To dates.', 'error');
+    return;
+  }
+
+  if (fromDate > toDate) {
+    setBulkMessage('From date cannot be after To date.', 'error');
+    return;
+  }
+
+  els.bulkPreviewButton.disabled = true;
+  els.bulkApplyReviewButton.disabled = true;
+  els.bulkWriteButton.disabled = true;
+  setBulkMessage('Building report preview...', '');
+
+  try {
+    const response = await apiWrite({
+      action: 'getMagicPreview',
+      token: state.adminToken,
+      fromDate,
+      toDate,
+      skipVideoIds: [...state.bulkSkippedVideoIds].join(','),
+      assignments: JSON.stringify(options.assignments || [])
+    });
+
+    if (!response.ok) {
+      throw new Error(response.error || 'Could not generate the bulk preview.');
+    }
+
+    const preview = response.data || {};
+    state.bulkGroups = preview.groups || [];
+    state.bulkMissing = preview.missing || [];
+    state.bulkSelectionKeys = new Set();
+
+    state.bulkGroups.forEach((group) => {
+      (group.videos || []).forEach((video) => {
+        state.bulkSelectionKeys.add(makeBulkSelectionKey(group.exam, video.videoId));
+      });
+    });
+
+    renderBulkPreview(preview);
+  } catch (error) {
+    setBulkMessage(error.message || String(error), 'error');
+  } finally {
+    els.bulkPreviewButton.disabled = false;
+    els.bulkApplyReviewButton.disabled = false;
+  }
+}
+
+function renderBulkPreview(preview) {
+  const exams = unique(state.bulkGroups.map((group) => group.exam).filter(Boolean));
+  const placements = state.bulkGroups.reduce((total, group) => total + (group.videos || []).length, 0);
+
+  els.bulkSummary.hidden = false;
+  els.bulkSummary.innerHTML = [
+    summaryCard('Date range', `${formatDate(preview.fromDate)} – ${formatDate(preview.toDate)}`),
+    summaryCard('Exam tabs', exams.length),
+    summaryCard('Report rows', state.bulkGroups.length),
+    summaryCard('Video placements', placements)
+  ].join('');
+
+  renderBulkMissing();
+  renderBulkGroups();
+
+  if (state.bulkMissing.length) {
+    setBulkMessage(`${state.bulkMissing.length} video(s) need metadata or must be skipped before writing.`, 'error');
+  } else if (!state.bulkGroups.length) {
+    setBulkMessage('No eligible long-form class videos were found in this date range.', 'error');
+  } else {
+    setBulkMessage('Preview ready. Deselect unwanted videos, then append the reports.', 'success');
+  }
+
+  updateBulkSelectionCount();
+}
+
+function renderBulkMissing() {
+  els.bulkMissingSection.hidden = state.bulkMissing.length === 0;
+  if (!state.bulkMissing.length) {
+    els.bulkMissingList.innerHTML = '';
+    return;
+  }
+
+  els.bulkMissingList.innerHTML = state.bulkMissing.map((video) => {
+    const examOptions = video.examOptions || [];
+    const detectedExams = video.exams || [];
+    const examControl = detectedExams.length
+      ? `<input type="text" data-bulk-exam value="${escapeAttribute(detectedExams.join(', '))}" readonly>`
+      : `<select data-bulk-exam>
+          <option value="">Select exam</option>
+          ${examOptions.map((exam) => `<option value="${escapeHtml(exam)}">${escapeHtml(exam)}</option>`).join('')}
+        </select>`;
+
+    return `
+      <article class="bulk-missing-row" data-video-id="${escapeHtml(video.videoId)}" data-has-detected-exams="${detectedExams.length ? 'true' : 'false'}">
+        <div class="bulk-video-copy">
+          <a href="https://www.youtube.com/watch?v=${encodeURIComponent(video.videoId)}" target="_blank" rel="noopener">${escapeHtml(video.title)}</a>
+          <span>${escapeHtml(video.channelName)} · ${formatDate(video.publishedAt)}</span>
+        </div>
+        <label class="stacked-label">
+          <span>Faculty</span>
+          <input type="text" data-bulk-teacher list="teacherNames" value="${escapeAttribute(video.teacher || '')}" placeholder="Faculty name">
+        </label>
+        <label class="stacked-label">
+          <span>Exam</span>
+          ${examControl}
+        </label>
+        <label class="stacked-label">
+          <span>Subject</span>
+          <input type="text" data-bulk-subject value="${escapeAttribute(video.subject || '')}" placeholder="Optional subject">
+        </label>
+        <label class="bulk-skip-option">
+          <input type="checkbox" data-bulk-skip>
+          <span>Skip for this report</span>
+        </label>
+      </article>
+    `;
+  }).join('');
+}
+
+async function applyBulkMetadataReview() {
+  const assignments = [];
+  const rows = [...els.bulkMissingList.querySelectorAll('.bulk-missing-row')];
+
+  for (const row of rows) {
+    const videoId = row.dataset.videoId;
+    const skip = row.querySelector('[data-bulk-skip]').checked;
+
+    if (skip) {
+      state.bulkSkippedVideoIds.add(videoId);
+      continue;
+    }
+
+    const teacherManual = row.querySelector('[data-bulk-teacher]').value.trim();
+    const examManual = row.querySelector('[data-bulk-exam]').value;
+    const subjectManual = row.querySelector('[data-bulk-subject]').value.trim();
+
+    if (!teacherManual || !examManual) {
+      setBulkMessage('Every reviewed video needs a faculty and exam, or must be skipped.', 'error');
+      return;
+    }
+
+    const assignment = { videoId, teacherManual, subjectManual };
+    if (row.dataset.hasDetectedExams !== 'true') {
+      assignment.examManual = examManual;
+    }
+    assignments.push(assignment);
+  }
+
+  await loadBulkPreview({ assignments });
+}
+
+async function skipAllMissingBulkVideos() {
+  if (!state.bulkMissing.length) {
+    return;
+  }
+
+  state.bulkMissing.forEach((video) => {
+    if (video.videoId) {
+      state.bulkSkippedVideoIds.add(video.videoId);
+    }
+  });
+
+  els.bulkSkipAllMissingButton.disabled = true;
+  setBulkMessage(`Skipping ${state.bulkMissing.length} metadata-missing video(s) for this report...`, '');
+
+  try {
+    await loadBulkPreview();
+  } finally {
+    els.bulkSkipAllMissingButton.disabled = false;
+  }
+}
+
+function renderBulkGroups() {
+  els.bulkGroupsSection.hidden = state.bulkGroups.length === 0;
+  if (!state.bulkGroups.length) {
+    els.bulkGroupsList.innerHTML = '';
+    return;
+  }
+
+  els.bulkGroupsList.innerHTML = state.bulkGroups.map((group, groupIndex) => `
+    <article class="bulk-group-card">
+      <div class="bulk-group-header">
+        <label class="bulk-group-toggle">
+          <input type="checkbox" data-bulk-group-index="${groupIndex}" checked>
+          <span>Select group</span>
+        </label>
+        <div>
+          <strong>${escapeHtml(group.exam)} · ${escapeHtml(group.teacher)}</strong>
+          <span>${escapeHtml(group.subject || 'Subject unassigned')} · ${escapeHtml(group.parentChannelName)}</span>
+        </div>
+        <span>${(group.videos || []).length} video(s) · Avg. ${compactNumber(group.averageViews)} views</span>
+      </div>
+      <div class="bulk-video-list">
+        ${(group.videos || []).map((video, videoIndex) => `
+          <label class="bulk-video-row">
+            <input type="checkbox" data-bulk-group="${groupIndex}" data-bulk-video="${videoIndex}" checked>
+            <span class="bulk-video-check"><i data-lucide="check"></i></span>
+            <span class="bulk-video-copy">
+              <strong>${escapeHtml(video.title)}</strong>
+              <small>${formatDate(video.publishedAt)} · ${compactNumber(video.viewCount)} views</small>
+            </span>
+            <a href="${escapeAttribute(video.youtubeUrl)}" target="_blank" rel="noopener" title="Open video">Open</a>
+          </label>
+        `).join('')}
+      </div>
+    </article>
+  `).join('');
+
+  refreshIcons();
+  syncBulkGroupCheckboxes();
+}
+
+function handleBulkSelectionChange(event) {
+  const groupToggle = event.target.closest('[data-bulk-group-index]');
+  if (groupToggle) {
+    const groupIndex = Number(groupToggle.dataset.bulkGroupIndex);
+    const group = state.bulkGroups[groupIndex];
+    (group.videos || []).forEach((video) => {
+      const key = makeBulkSelectionKey(group.exam, video.videoId);
+      if (groupToggle.checked) {
+        state.bulkSelectionKeys.add(key);
+      } else {
+        state.bulkSelectionKeys.delete(key);
+      }
+    });
+    els.bulkGroupsList.querySelectorAll(`[data-bulk-group="${groupIndex}"]`).forEach((checkbox) => {
+      checkbox.checked = groupToggle.checked;
+    });
+  }
+
+  const videoToggle = event.target.closest('[data-bulk-video]');
+  if (videoToggle) {
+    const group = state.bulkGroups[Number(videoToggle.dataset.bulkGroup)];
+    const video = group.videos[Number(videoToggle.dataset.bulkVideo)];
+    const key = makeBulkSelectionKey(group.exam, video.videoId);
+    if (videoToggle.checked) {
+      state.bulkSelectionKeys.add(key);
+    } else {
+      state.bulkSelectionKeys.delete(key);
+    }
+  }
+
+  syncBulkGroupCheckboxes();
+  updateBulkSelectionCount();
+}
+
+function syncBulkGroupCheckboxes() {
+  els.bulkGroupsList.querySelectorAll('[data-bulk-group-index]').forEach((checkbox) => {
+    const group = state.bulkGroups[Number(checkbox.dataset.bulkGroupIndex)];
+    const selected = (group.videos || []).filter((video) => (
+      state.bulkSelectionKeys.has(makeBulkSelectionKey(group.exam, video.videoId))
+    )).length;
+    checkbox.checked = selected === group.videos.length;
+    checkbox.indeterminate = selected > 0 && selected < group.videos.length;
+  });
+}
+
+function updateBulkSelectionCount() {
+  const count = state.bulkSelectionKeys.size;
+  els.bulkSelectedCount.textContent = count.toLocaleString();
+  els.bulkWriteButton.disabled = state.bulkMissing.length > 0 || count === 0 || state.bulkGroups.length === 0;
+}
+
+function makeBulkSelectionKey(exam, videoId) {
+  return `${exam || ''}||${videoId || ''}`;
+}
+
+function getBulkSelections() {
+  const selections = [];
+  state.bulkGroups.forEach((group) => {
+    (group.videos || []).forEach((video) => {
+      if (state.bulkSelectionKeys.has(makeBulkSelectionKey(group.exam, video.videoId))) {
+        selections.push({ exam: group.exam, videoId: video.videoId });
+      }
+    });
+  });
+  return selections;
+}
+
+async function writeBulkReports() {
+  const selections = getBulkSelections();
+  if (!selections.length || state.bulkMissing.length) {
+    setBulkMessage('Complete the review and select at least one video before writing.', 'error');
+    return;
+  }
+
+  els.bulkWriteButton.disabled = true;
+  setBulkMessage('Appending report rows to the exam tabs...', '');
+
+  try {
+    const response = await apiWrite({
+      action: 'writeMagicReport',
+      token: state.adminToken,
+      fromDate: els.bulkFromDate.value,
+      toDate: els.bulkToDate.value,
+      skipVideoIds: [...state.bulkSkippedVideoIds].join(','),
+      selections: JSON.stringify(selections)
+    });
+
+    if (!response.ok) {
+      throw new Error(response.error || 'Could not append the bulk reports.');
+    }
+
+    if (response.data.needsReview) {
+      state.bulkMissing = response.data.missing || [];
+      renderBulkMissing();
+      throw new Error('Some videos changed and now need review. Review them before writing.');
+    }
+
+    const sheetSummary = (response.data.sheets || [])
+      .map((sheet) => `${sheet.sheetName}: ${sheet.rows}`)
+      .join(', ');
+    setBulkMessage(`Appended ${response.data.writtenRows} row(s). ${sheetSummary}`, 'success');
+    showToast('Bulk reports appended successfully.');
+    state.bulkSelectionKeys.clear();
+    updateBulkSelectionCount();
+  } catch (error) {
+    setBulkMessage(error.message || String(error), 'error');
+    updateBulkSelectionCount();
+  }
+}
+
 function openPlayer(video) {
   state.activeVideo = video;
   const card = els.playerModal.querySelector('.player-card');
@@ -1043,6 +1660,16 @@ function setAnalysisMessage(message, type) {
   els.analysisMessage.className = `form-message ${type || ''}`.trim();
 }
 
+function setBulkMessage(message, type) {
+  els.bulkMessage.textContent = message || '';
+  els.bulkMessage.className = `form-message ${type || ''}`.trim();
+}
+
+function setTeacherUpdateMessage(message, type) {
+  els.teacherUpdateMessage.textContent = message || '';
+  els.teacherUpdateMessage.className = `form-message ${type || ''}`.trim();
+}
+
 function compactNumber(value) {
   return new Intl.NumberFormat('en-IN', {
     notation: 'compact',
@@ -1065,6 +1692,13 @@ function formatDate(value) {
     month: 'short',
     year: 'numeric'
   }).format(date);
+}
+
+function formatDateInput(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function normalize(value) {
