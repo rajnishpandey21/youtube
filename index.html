@@ -17,6 +17,14 @@
             <h1>YouTube Premium</h1>
           </div>
           <div class="topbar-actions">
+            <button class="ghost-button" type="button" id="updateTeachersButton" title="Discover and update teachers">
+              <i data-lucide="user-round-search"></i>
+              <span>Update Teachers</span>
+            </button>
+            <button class="ghost-button" type="button" id="bulkUpdateButton" title="Generate reports for all exams">
+              <i data-lucide="list-checks"></i>
+              <span>Bulk Update</span>
+            </button>
             <button class="ghost-button" type="button" id="refreshButton" title="Reload data">
               <i data-lucide="refresh-cw"></i>
               <span>Refresh</span>
@@ -305,6 +313,133 @@
             </thead>
             <tbody id="analysisTableBody"></tbody>
           </table>
+        </div>
+      </article>
+    </div>
+
+    <div id="bulkUpdateModal" class="bulk-update-modal" hidden>
+      <div class="player-backdrop" data-close-bulk></div>
+      <article class="bulk-update-card" role="dialog" aria-modal="true" aria-labelledby="bulkUpdateTitle">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Report Builder</p>
+            <h2 id="bulkUpdateTitle">Bulk Update</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-bulk aria-label="Close bulk update">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <div class="bulk-date-panel">
+          <label class="stacked-label">
+            <span>From date</span>
+            <input id="bulkFromDate" type="date">
+          </label>
+          <label class="stacked-label">
+            <span>To date</span>
+            <input id="bulkToDate" type="date">
+          </label>
+          <button class="primary-button" type="button" id="bulkPreviewButton">
+            <i data-lucide="scan-search"></i>
+            <span>Generate Preview</span>
+          </button>
+        </div>
+
+        <p id="bulkMessage" class="form-message"></p>
+        <div id="bulkSummary" class="bulk-summary" hidden></div>
+
+        <section id="bulkMissingSection" class="bulk-review-section" hidden>
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Action Required</p>
+              <h2>Videos missing faculty or exam</h2>
+            </div>
+            <button class="ghost-button bulk-skip-all-button" type="button" id="bulkSkipAllMissingButton">
+              <i data-lucide="list-x"></i>
+              <span>Skip All Missing</span>
+            </button>
+          </div>
+          <p class="muted">Correct the video metadata, or skip it for this report only.</p>
+          <div id="bulkMissingList" class="bulk-missing-list"></div>
+          <button class="ghost-button" type="button" id="bulkApplyReviewButton">
+            <i data-lucide="refresh-cw"></i>
+            <span>Apply & Refresh Preview</span>
+          </button>
+        </section>
+
+        <section id="bulkGroupsSection" class="bulk-review-section" hidden>
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Review Selection</p>
+              <h2>Deselect unwanted videos before writing</h2>
+            </div>
+            <span id="bulkSelectedCount">0</span>
+          </div>
+          <div id="bulkGroupsList" class="bulk-groups-list"></div>
+        </section>
+
+        <div class="bulk-footer">
+          <p class="muted">Reports are always appended to all applicable exam tabs.</p>
+          <button class="primary-button" type="button" id="bulkWriteButton" disabled>
+            <i data-lucide="sheet"></i>
+            <span>Append Reports</span>
+          </button>
+        </div>
+      </article>
+    </div>
+
+    <div id="teacherUpdateModal" class="teacher-update-modal" hidden>
+      <div class="player-backdrop" data-close-teachers></div>
+      <article class="teacher-update-card" role="dialog" aria-modal="true" aria-labelledby="teacherUpdateTitle">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Teacher Discovery</p>
+            <h2 id="teacherUpdateTitle">Update Teachers Tab</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-teachers aria-label="Close teacher update">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <div class="teacher-date-panel">
+          <label class="stacked-label">
+            <span>From date</span>
+            <input id="teacherFromDate" type="date">
+          </label>
+          <label class="stacked-label">
+            <span>To date</span>
+            <input id="teacherToDate" type="date">
+          </label>
+          <button class="primary-button" type="button" id="teacherPreviewButton">
+            <i data-lucide="scan-search"></i>
+            <span>Find Teachers</span>
+          </button>
+        </div>
+
+        <p id="teacherUpdateMessage" class="form-message"></p>
+        <div id="teacherUpdateSummary" class="teacher-update-summary" hidden></div>
+
+        <section id="teacherCandidatesSection" class="teacher-candidates-section" hidden>
+          <div class="teacher-candidates-toolbar">
+            <div>
+              <p class="eyebrow">Review Candidates</p>
+              <h3>Approve the rows to add or update</h3>
+            </div>
+            <label class="teacher-select-all">
+              <input id="teacherSelectAll" type="checkbox" checked>
+              <span>Select all</span>
+            </label>
+          </div>
+          <p class="muted">New teachers are inactive by default. Turn on Active only after confirming the detection.</p>
+          <div id="teacherCandidatesList" class="teacher-candidates-list"></div>
+        </section>
+
+        <div class="teacher-update-footer">
+          <p class="muted">Destination: database spreadsheet → Teachers tab</p>
+          <button class="primary-button" type="button" id="teacherUpdateSubmitButton" disabled>
+            <i data-lucide="users-round"></i>
+            <span>Update Selected Teachers</span>
+          </button>
         </div>
       </article>
     </div>
