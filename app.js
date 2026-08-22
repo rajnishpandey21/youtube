@@ -1,4 +1,4 @@
-const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbyGD_4Kj1V9nnCBPZvxLSXJoUtw7mFKhilYkBJPPgPQE0PSjishstezKVMnGbXcAcZ6Tw/exec';
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbzmbmCQHRHzJrNd016qxv7M1glwFvm3-R4wiHBHcC2D9hYh19rp08uv7JwwApMtLHUlWQ/exec';
 const DEFAULT_ADMIN_TOKEN = 'myDashboardAdmin123';
 
 const state = {
